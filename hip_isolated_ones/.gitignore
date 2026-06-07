@@ -1,0 +1,9 @@
+hip_isolated_ones/hip_isolated_ones
+hip_isolated_ones/build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
+.idea/
+Thumbs.db
