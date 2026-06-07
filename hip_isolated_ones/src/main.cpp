@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
     bool quick = false;
     std::string method_filter = "all";
     std::vector<int> sizes = {1024, 2048};
-    int warmup = 3;
+    int warmup = 5;
     int repeats = 20;
     uint32_t seed = 7;
 
@@ -364,8 +364,9 @@ int main(int argc, char** argv) {
                 if (!quick || N <= 256) {
                     auto stats = benchmark_method(spec, d_grid, d_padded, N, d_scalar, d_block_out,
                                                     nblocks_tile30, nblocks_2d, warmup, repeats);
-                    std::cout << "  " << std::left << std::setw(28) << spec.name << "  median "
-                              << std::fixed << std::setprecision(2) << stats.median_ms << " ms"
+                    std::cout << "  " << std::left << std::setw(28) << spec.name
+                              << "  median " << std::fixed << std::setprecision(2) << stats.median_ms
+                              << " ms  mean " << stats.mean_ms << " ms"
                               << "  (std " << stats.std_ms << ")\n";
                 } else {
                     std::cout << "  " << std::left << std::setw(28) << spec.name << "  OK\n";
