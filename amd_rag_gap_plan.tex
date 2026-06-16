@@ -1,0 +1,434 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\title{AMD RAG Vector Search Gap Demo\\[0.4em]
+\large Project Plan (3--4 Engineers, 2--3 Weeks)}
+\author{Konstantin Kolchin}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document proposes a focused engineering sprint to demonstrate the
+\emph{integration gap} between NVIDIA-centric GPU vector search in production
+RAG stacks and the AMD ROCm ecosystem.
+Milvus~\cite{milvus-home,milvus-osdi21} exposes GPU-accelerated indexing and
+query through RAPIDS cuVS~\cite{cuvs-docs,rapids-home}, which requires CUDA;
+AMD offers hipVS~\cite{hipvs-docs,hipvs-github}---a ROCm-DS port of cuVS---but
+no first-class Milvus integration exists (GitHub issue~\#5654 remains
+unresolved~\cite{milvus-rocm-issue}).
+Over two to three weeks, a team of three to four engineers will produce a gap
+analysis, a working hipVS retrieval demo embedded in a minimal RAG pipeline,
+recall/latency benchmarks against CPU baselines, and a Milvus integration spike
+with effort estimates.
+The sprint deliberately excludes full-stack ports (Milvus, RAPIDS, Audacity,
+OpenVINO) and instead delivers evidence and a reproducible demo suitable for
+stakeholder review.
+\end{abstract}
+
+\section{Background and motivation}
+\label{sec:background}
+
+\subsection{Retrieval-augmented generation (RAG)}
+
+RAG augments large language models with external knowledge by retrieving
+relevant documents at query time~\cite{rag-lewis2020,langchain-rag,llamaindex-rag}.
+A typical pipeline embeds corpus chunks into dense vectors
+(e.g.\ via Sentence-Transformers~\cite{sentence-transformers} or commercial
+APIs~\cite{openai-embeddings}), stores them in a vector database, and at query
+time retrieves the top-$k$ nearest neighbors before passing context to the LLM.
+Embedding quality is commonly evaluated on benchmarks such as
+MTEB~\cite{mteb}.
+
+Vector search---finding approximate nearest neighbors (ANN) in high-dimensional
+space at scale---is the performance-critical step once corpora exceed in-memory
+CPU capacity.
+Libraries and databases in this space include FAISS~\cite{faiss-github,faiss-arxiv},
+Milvus~\cite{milvus-home,milvus-github}, Chroma~\cite{chromadb}, Qdrant~\cite{qdrant},
+Weaviate~\cite{weaviate}, and managed offerings such as Pinecone~\cite{pinecone-arch}.
+
+\subsection{GPU-accelerated vector search on NVIDIA}
+
+NVIDIA RAPIDS cuVS~\cite{cuvs-docs,cuvs-github,rapids-home,rapids-github}
+provides GPU implementations of ANN algorithms including IVF-PQ~\cite{ivfpq-jegou},
+HNSW-related methods~\cite{hnsw-paper}, and CAGRA~\cite{nvidia-cagra}.
+Milvus integrates cuVS for GPU index build and search~\cite{milvus-gpu-index,milvus-gpu-cagra},
+making CUDA GPUs the de facto accelerator path for production Milvus deployments
+that require sub-millisecond query latency on large collections.
+
+\subsection{AMD ROCm and hipVS}
+
+AMD's HIP~\cite{hip-docs,hip-porting,hipify-device-api} provides a CUDA-like
+programming model on ROCm~\cite{rocm-prog-guide}.
+The ROCm Data Science (ROCm-DS) initiative ports key RAPIDS components to HIP;
+hipVS~\cite{hipvs-docs,hipvs-whatis,hipvs-github,rocm-ds-overview} is the
+vector-search counterpart to cuVS, with hipRAFT~\cite{hipraft-github} backing
+low-level primitives.
+AMD documents build instructions~\cite{hipvs-build} and reports performance
+characteristics in ROCm blog posts~\cite{hipvs-blog}.
+
+Prior work in this repository~\cite{cuda-to-hip-repo} demonstrated that
+CUDA-to-HIP kernel ports can yield significant wins on AMD hardware when
+architecture-specific tuning (LDS layout, divergence reduction) is applied;
+the same engineering mindset applies to integrating hipVS into application stacks
+rather than assuming API parity alone guarantees performance.
+
+\subsection{The gap}
+
+Milvus GPU support is CUDA-only~\cite{milvus-gpu-index,milvus-prerequisite-gpu}.
+Official prerequisites list NVIDIA compute capability, drivers, and the
+\texttt{nvidia-device-plugin} on Kubernetes~\cite{milvus-prerequisite-gpu};
+GPU index types such as \texttt{GPU\_CAGRA} and \texttt{GPU\_IVF\_PQ} are
+contributed through NVIDIA RAPIDS/cuVS~\cite{milvus-gpu-cagra,milvus-gpu-index}.
+Community requests for ROCm/AMD support~\cite{milvus-rocm-issue} have not
+produced a merged integration path.
+Meanwhile hipVS exists and is actively maintained~\cite{hipvs-github}, but
+end users cannot select ``Milvus + AMD GPU'' as they can ``Milvus + NVIDIA GPU.''
+This sprint makes that gap \emph{visible and measurable}: not merely a feature
+request, but a documented user journey, benchmark data, and integration options.
+
+\paragraph{Illustrative journeys from community reports.}
+The following vignettes are drawn from public Milvus GitHub issues and
+discussions; they are representative of recurring reports, not isolated bugs.
+
+\medskip
+\noindent\textbf{On NVIDIA (straightforward path).}
+A team building a RAG service on Linux with an NVIDIA A100 or T4 follows
+documented steps: install the GPU-enabled Milvus standalone or cluster compose
+file~\cite{milvus-gpu-index,milvus-230-beta}, create a collection, and build a
+\texttt{GPU\_CAGRA} or \texttt{GPU\_IVF\_PQ} index.
+Milvus documentation states that GPU indexing can improve throughput by up to
+$100\times$ on large batches relative to CPU~\cite{milvus-gpu-index}.
+Embedding generation (Sentence-Transformers or an API) plus Milvus GPU retrieval
+is a well-trodden path in tutorials and production write-ups~\cite{langchain-rag,milvus-home}.
+
+\medskip
+\noindent\textbf{On AMD or ROCm-class hardware (blocked at the database layer).}
+In June~2021, GitHub user \texttt{boniek83} opened a feature request titled
+``ROCm support,'' stating plainly that ``Milvus only works with NVidia
+gpus'' and asking for a ROCm build~\cite{milvus-rocm-issue}.
+The issue was moved to the 2.x backlog and closed as stale three months later
+without implementation---a pattern repeated across subsequent years.
+
+In March~2023, newcomer \texttt{victorsoda} asked on Milvus Discussions how to
+run standalone Milvus \emph{on their GPUs} for indexing and similarity
+search, noting that their chip is ``similar to GPU but different'' and asking
+whether they could contribute support~\cite{milvus-discussion-23145}.
+Milvus maintainer \texttt{yhmo} replied that GPU support exists from v2.3.0-beta
+onward but ``only supports Nvidia cards and requires NVIDIA Driver
+installed''~\cite{milvus-discussion-23145,milvus-230-beta}.
+There is no documented path for ROCm or AMD Radeon in that thread---only the
+NVIDIA prerequisite chain.
+
+A structurally similar report appears for Hygon DCU accelerators (ROCm/HIP
+ecosystem, AMD-derived architecture).
+In October~2025, \texttt{deqinxirang} asked whether Milvus supports the Hygon
+K100\_AI DCU and \emph{what steps are required to add support}~\cite{milvus-issue-dcu}.
+Core maintainer \texttt{xiaofan-luan} answered: ``don't have plan right now for
+any other device rather than GPU'' (meaning NVIDIA GPU in practice), ``But any
+contributions are welcomed''~\cite{milvus-issue-dcu}.
+The author followed up weeks later---``Does the latest version support Hygon DCU
+now? How should one adapt?''---and received no integration guide before the
+issue was closed stale~\cite{milvus-issue-dcu,milvus-accelerator-issue}.
+
+Broader accelerator requests tell the same story at the architectural level.
+Issue~\#21550 asks about Kunlun, Hygon DCU, and other AI cards~\cite{milvus-accelerator-issue};
+issue~\#33885 notes that Knowhere depends on NVIDIA RAFT/cuVS, which ``only supports
+CUDA,'' so non-CUDA GPUs require rewriting ANN kernels for another stack~\cite{milvus-huawei-issue}.
+Milvus engineers describe a roadmap for flexible third-party devices but defer
+implementation to community contributors~\cite{milvus-accelerator-issue,milvus-huawei-issue}.
+
+\medskip
+\noindent\textbf{Composite RAG scenario (synthesized from the above).}
+Consider a developer who already runs embeddings on an AMD workstation
+(Radeon RX~6800 XT or an institutional Hygon DCU node under ROCm).
+They read Milvus RAG tutorials~\cite{langchain-rag,rag-lewis2020}, install Milvus,
+and expect to enable \texttt{GPU\_CAGRA} as in the NVIDIA examples~\cite{milvus-gpu-index}.
+Instead they discover that GPU indexes never register: Milvus looks for CUDA and
+NVIDIA drivers~\cite{milvus-prerequisite-gpu,milvus-discussion-23145}.
+CPU-only Milvus remains usable but falls short when documentation promises
+order-of-magnitude GPU gains~\cite{milvus-gpu-index}.
+AMD's hipVS~\cite{hipvs-docs,hipvs-github} offers the missing ANN layer on ROCm,
+yet there is no \texttt{pymilvus} switch to select it---the user must leave the
+Milvus GPU path entirely and wire hipVS (or FAISS on CPU) into a custom RAG
+script~\cite{faiss-github,hipvs-blog}.
+That integration friction---not the absence of AMD vector-search code---is the
+gap this sprint documents and demos.
+
+\section{Project goals}
+\label{sec:goals}
+
+\begin{enumerate}[label=\textbf{G\arabic*.}, leftmargin=*]
+  \item \textbf{Gap analysis document} mapping CUDA/NVIDIA vs.\ ROCm/AMD capabilities
+        across vector search, Milvus, and RAG tooling, with a prioritized integration
+        matrix.
+  \item \textbf{hipVS demo} building IVF and/or CAGRA indexes on AMD hardware,
+        reporting recall@$k$ and query latency vs.\ CPU/FAISS baselines.
+  \item \textbf{Minimal RAG pipeline} wiring embeddings $\rightarrow$ hipVS retrieval
+        $\rightarrow$ sample queries (CLI or notebook), proving end-to-end feasibility
+        outside Milvus.
+  \item \textbf{Milvus integration spike} identifying where GPU code paths branch on
+        CUDA, sketching hipVS adapter options, and estimating effort for a production-grade
+        contribution.
+\end{enumerate}
+
+\section{Scope}
+\label{sec:scope}
+
+\subsection{In scope}
+
+\begin{itemize}[leftmargin=*]
+  \item Literature and product survey (Milvus, cuVS, hipVS, FAISS, RAG frameworks).
+  \item hipVS build and validation on a ROCm machine (target: \texttt{gfx1030} or
+        newer RDNA/CDNA as available).
+  \item Benchmark suite: index build time, queries/sec, recall@$k$ on a public or
+        synthetic embedding dataset.
+  \item Demo RAG script (Python): chunk corpus, embed, index with hipVS, retrieve,
+        optional LLM call stub.
+  \item Milvus source review: GPU index factory, cuVS bindings, configuration surface.
+  \item Written deliverables: gap report, demo README, integration proposal.
+\end{itemize}
+
+\subsection{Out of scope (non-goals)}
+
+\begin{itemize}[leftmargin=*]
+  \item Full Milvus fork with merged ROCm support (spike only).
+  \item Port of entire RAPIDS stack to ROCm beyond what hipVS/hipRAFT already provide.
+  \item Audacity~\cite{audacity-home} or OpenVINO Audacity
+        plugins~\cite{openvino-audacity} (orthogonal ONNX/ROCm paths exist
+        separately~\cite{onnxruntime-rocm}).
+  \item Production hardening: HA Milvus cluster, auth, multi-tenant ops.
+  \item Training or fine-tuning embedding models.
+\end{itemize}
+
+\section{Workstreams and staffing}
+\label{sec:workstreams}
+
+Recommended team: \textbf{3--4 engineers} over \textbf{2--3 weeks}.
+Table~\ref{tab:workstreams} assigns primary ownership; all streams share weekly
+sync and a common benchmark harness.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Workstreams, owners, and primary deliverables.}
+  \label{tab:workstreams}
+  \begin{tabularx}{\textwidth}{@{}l X X@{}}
+    \toprule
+    \textbf{Stream} & \textbf{Focus} & \textbf{Deliverable} \\
+    \midrule
+    W1 -- Gap analysis &
+    Survey CUDA vs.\ AMD matrix; user journeys; risk register &
+    Gap analysis PDF (15--25 pages) \\
+    W2 -- hipVS engineer &
+    Build hipVS~\cite{hipvs-build}; IVF/CAGRA; recall/latency &
+    Benchmark tables + reproducible scripts \\
+    W3 -- RAG pipeline &
+    Embeddings~\cite{sentence-transformers}; retrieval demo; docs &
+    \texttt{demo/} repo + runbook \\
+    W4 -- Milvus spike &
+    Trace GPU paths~\cite{milvus-gpu-index}; adapter design; estimate &
+    Integration memo + optional PoC patch \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{W1: Gap analysis (lead: systems architect)}
+
+\textbf{Week 1:}
+\begin{itemize}[leftmargin=*]
+  \item Inventory GPU vector search APIs: cuVS~\cite{cuvs-docs} vs.\
+        hipVS~\cite{hipvs-docs}.
+  \item Document Milvus GPU architecture~\cite{milvus-gpu-cagra,milvus-osdi21} and
+        ROCm issue history~\cite{milvus-rocm-issue}.
+  \item Compare alternative stacks (FAISS~\cite{faiss-arxiv}, Milvus Lite~\cite{milvus-lite})
+        for AMD-only deployments.
+\end{itemize}
+
+\textbf{Week 2--3:}
+\begin{itemize}[leftmargin=*]
+  \item Produce integration matrix (component $\times$ CUDA $\times$ ROCm $\times$ effort).
+  \item Write executive summary for Alexander/stakeholders.
+  \item Cross-link W2/W3 benchmark numbers into the report.
+\end{itemize}
+
+\subsection{W2: hipVS engineer (lead: GPU/ROCm specialist)}
+
+\textbf{Week 1:}
+\begin{itemize}[leftmargin=*]
+  \item Clone and build ROCm-DS/hipVS~\cite{hipvs-github} on target AMD machine.
+  \item Run upstream examples; verify HIP/ROCm version compatibility~\cite{hip-faq}.
+  \item Select datasets (e.g.\ 768-dim sentence embeddings, $10^5$--$10^6$ vectors).
+\end{itemize}
+
+\textbf{Week 2:}
+\begin{itemize}[leftmargin=*]
+  \item Benchmark IVF-PQ and CAGRA (if available) vs.\ CPU FAISS~\cite{faiss-github}.
+  \item Measure build time, batch query latency, recall@1/10/100.
+  \item Profile bottlenecks; note hipRAFT dependency behavior~\cite{hipraft-github}.
+\end{itemize}
+
+\textbf{Week 3:}
+\begin{itemize}[leftmargin=*]
+  \item Harden scripts for reproducibility; document hardware (\texttt{gfx*} arch).
+  \item Support W3 integration; optional comparison with cuVS docs baseline~\cite{nvidia-cagra}.
+\end{itemize}
+
+\subsection{W3: RAG pipeline (lead: ML/application engineer)}
+
+\textbf{Week 1:}
+\begin{itemize}[leftmargin=*]
+  \item Define demo corpus (technical docs or Wikipedia subset).
+  \item Pipeline: chunk $\rightarrow$ embed (Sentence-Transformers~\cite{sentence-transformers})
+        $\rightarrow$ numpy/torch tensors.
+\end{itemize}
+
+\textbf{Week 2:}
+\begin{itemize}[leftmargin=*]
+  \item Wire hipVS index from W2; expose \texttt{search(query, k)}.
+  \item Implement query loop following RAG patterns~\cite{langchain-rag,rag-lewis2020}.
+  \item CLI or Jupyter demo with 5--10 example questions.
+\end{itemize}
+
+\textbf{Week 3:}
+\begin{itemize}[leftmargin=*]
+  \item README with prerequisites (ROCm, hipVS, Python deps).
+  \item Optional: stub LLM response (no API key required for core demo).
+\end{itemize}
+
+\subsection{W4: Milvus integration spike (lead: backend engineer)}
+
+\textbf{Week 1:}
+\begin{itemize}[leftmargin=*]
+  \item Clone milvus-io/milvus~\cite{milvus-github}; map GPU index code paths.
+  \item Identify cuVS call sites and CUDA assumptions.
+\end{itemize}
+
+\textbf{Week 2:}
+\begin{itemize}[leftmargin=*]
+  \item Design options: (A)~hipVS backend plugin, (B)~sidecar index service,
+        (C)~Milvus CPU + external hipVS retrieval.
+  \item Estimate LOC, test burden, upstream contribution path.
+\end{itemize}
+
+\textbf{Week 3:}
+\begin{itemize}[leftmargin=*]
+  \item Write integration memo (recommended path + risks).
+  \item Optional: minimal patch or fork branch demonstrating index factory hook.
+\end{itemize}
+
+\section{Timeline}
+\label{sec:timeline}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Three-week sprint calendar (adjustable to two weeks by deferring W4 PoC).}
+  \label{tab:timeline}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Week} & \textbf{W1 Gap} & \textbf{W2 hipVS} & \textbf{W3 RAG / W4 Milvus} \\
+    \midrule
+    1 & Survey + outline & Build + smoke tests & Corpus + Milvus trace \\
+    2 & Draft report & Benchmarks & hipVS wire + adapter design \\
+    3 & Final report & Repro scripts & Demo polish + integration memo \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Milestone M1 (end of week 1):} hipVS builds; Milvus GPU map drafted.
+\textbf{M2 (week 2):} First benchmark numbers; RAG retrieves correct chunks on sample queries.
+\textbf{M3 (week 3):} All deliverables tagged; stakeholder demo ready.
+
+\section{Success criteria}
+\label{sec:success}
+
+\begin{enumerate}[label=\textbf{S\arabic*.}, leftmargin=*]
+  \item Gap report cites primary sources (Milvus docs, hipVS docs, issue~\#5654) and
+        includes a clear ``what works today on AMD'' vs.\ ``what Milvus users expect'' table.
+  \item hipVS demo achieves recall within 5\% of CPU FAISS baseline at comparable $k$ on
+        at least one dataset.
+  \item RAG demo returns relevant chunks for $\geq$80\% of hand-crafted test queries
+        (qualitative review).
+  \item Milvus spike delivers a ranked list of integration options with person-week estimates.
+  \item All artifacts in a single repository with CI-friendly build/run instructions.
+\end{enumerate}
+
+\section{Risks and mitigations}
+\label{sec:risks}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Risk register.}
+  \label{tab:risks}
+  \begin{tabularx}{\textwidth}{@{}%
+    >{\raggedright\arraybackslash}p{0.32\textwidth}%
+    >{\raggedright\arraybackslash}p{0.14\textwidth}%
+    >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    \textbf{Risk} & \textbf{Impact} & \textbf{Mitigation} \\
+    \midrule
+    hipVS build fails on target GPU &
+    Blocks W2/W3 &
+    Early week-1 build; fallback to hipVS Docker/CI runner \\
+    Algorithm parity gaps (CAGRA vs IVF) &
+    Weak demo &
+    Document supported index types~\cite{hipvs-whatis}; use best available \\
+    Milvus codebase complexity &
+    W4 overrun &
+    Time-box spike; memo over merge-ready PR \\
+    Embedding model size on CPU &
+    Slow demo prep &
+    Cache embeddings; use small model \\
+    Stakeholder expects full Milvus port &
+    Scope creep &
+    Refer to non-goals (Section~\ref{sec:scope}) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{Relationship to prior HIP kernel work}
+\label{sec:prior}
+
+The isolated-ones HIP benchmark in \texttt{cuda-to-hip}~\cite{cuda-to-hip-repo}
+showed that portable CUDA subsets (\texttt{\_\_shared\_\_}, \texttt{\_\_shfl},
+\texttt{hipEvent}) suffice for custom kernels, but micro-architecture tuning
+(LDS bank padding, divergence) determines winners on \texttt{gfx1030}.
+hipVS abstracts ANN algorithms behind a library API~\cite{hipvs-docs}; this sprint
+shifts focus from hand-written kernels to \emph{stack integration}---yet the
+same validation discipline applies: measure on AMD hardware, do not assume
+CUDA-era defaults transfer unchanged~\cite{hip-porting,hipify-device-api}.
+
+\section{Deliverables checklist}
+\label{sec:deliverables}
+
+\begin{itemize}[leftmargin=*]
+  \item[\checkmark] \textbf{D1:} Gap analysis report (PDF).
+  \item[\checkmark] \textbf{D2:} \texttt{benchmarks/} --- hipVS vs.\ FAISS scripts and results CSV.
+  \item[\checkmark] \textbf{D3:} \texttt{demo/rag\_hipvs/} --- minimal RAG pipeline.
+  \item[\checkmark] \textbf{D4:} \textbf{Milvus integration memo} (PDF or markdown).
+  \item[\checkmark] \textbf{D5:} 30-minute stakeholder walkthrough (slides optional).
+\end{itemize}
+
+\section{References}
+
+\bibliographystyle{plainurl}
+\bibliography{amd_rag_gap_plan}
+
+\end{document}
