@@ -50,8 +50,6 @@ I work in Cursor, mostly with Grok. Other people on the team use other agents. T
 
 <here goes Maxim's part>
 
-Maxim's tree for Milvus+HIP is [https://github.com/krainov/milvus-hip](https://github.com/krainov/milvus-hip).
-
 ## Two cards, same night job
 
 Once the 4080 was on the floor, both machines got the same dataset, the same queries, the same index settings, every night.
