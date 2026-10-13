@@ -58,9 +58,21 @@ Maxim's tree for Milvus+HIP is [https://github.com/krainov/milvus-hip](https://g
 
 Once the 4080 was on the floor, both machines got the same dataset, the same queries, the same index settings, every night.
 
-AMD box: Radeon RX 7900 XTX (24 GB), Ryzen 7 7700X (8 cores / 16 threads), 64 GB DDR5, Ubuntu 22.04.5, ROCm 7.0.2.
+AMD box:
 
-NVIDIA box: GeForce RTX 4080 (16 GB), Intel CPU (16 logical CPUs; the lab notes never stored the exact SKU), about 61 GiB RAM as the OS sees it, Ubuntu 22.04.5, CUDA 11.8 in the Milvus build and 12.8 in a separate cuVS container.
+- GPU: Radeon RX 7900 XTX, 24 GB
+- CPU: Ryzen 7 7700X, 8 cores / 16 threads
+- RAM: 64 GB DDR5
+- OS: Ubuntu 22.04.5 LTS
+- GPU stack: ROCm 7.0.2
+
+NVIDIA box:
+
+- GPU: GeForce RTX 4080, 16 GB
+- CPU: Intel, 16 logical CPUs (exact SKU was not in the lab notes)
+- RAM: about 61 GiB as the OS sees it
+- OS: Ubuntu 22.04.5 LTS (same as the AMD box)
+- GPU stack: CUDA 11.8 for the Milvus build; CUDA 12.8 in a separate cuVS container
 
 They shipped four weeks apart in late 2022, so this is not a 2020 card vs a 2024 card. It is also not the same chip. 24 GB on one side, 16 GB on the other. GIST-1M — a million vectors, 960 dimensions, roughly 3.8 GB — fits in VRAM on both, which is why we used it. If your collection is bigger than the card, these plots are not your plots.
 
