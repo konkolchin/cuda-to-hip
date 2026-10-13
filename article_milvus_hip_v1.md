@@ -44,11 +44,35 @@ We also poked at a “smarter” PQ score loop. QPS didn't move. I reverted it. 
 
 `GPU_CAGRA` can search the whole index on this GPU in the lab. If you need to skip rows — a filter expression, deletes, TTL — don't use it here yet. That is a later piece of work, not this article.
 
-## How we ported with agents
+## Two different ports, not one story
 
-I work in Cursor, mostly with Grok. Other people on the team use other agents. They are useful for grepping, for first-cut patches, and for the kind of CMake error that makes you want to go home. I still run the gate, and I still decide if a number is allowed to leave the lab.
+There were two pieces of work. They look similar from far away — HIP, Knowhere, benches on a Radeon — and they are not the same job.
 
-<here goes Maxim's part>
+The first is mine: I sit in the code with an assistant. The second is Maksim's: a closed agent pipeline that was supposed to drive the port and the benches with almost no one typing C++. His tree is not on public GitHub. What we have is the workflow picture and what he told me. The next subsection is a draft for him to correct.
+
+### 1. AI assistance (this article's main line)
+
+I work in Cursor, mostly with Grok. Other people on the team use other agents. They are useful for grepping, for first-cut patches, and for the kind of CMake error that makes you want to go home. I still run the gate, and I still decide if a number is allowed to leave the lab. The layers, the packer fix, the plots below — that line is this.
+
+### 2. Closed agent pipeline (Maksim) — draft, please correct
+
+*Maksim: written from our chat plus `milvus_pipeline_architecture_v3.png`. Cross out anything that is wrong. We will not invent a public repo.*
+
+Maksim did not patch Milvus by hand. He built a loop that can be pointed at the next CUDA-only library later. For this project the loop was told to adapt hipVS and hipRAFT, get Knowhere to build, hang tests and checks on it, and review whether a gfx1100 run was allowed to start. It was not told to rewrite NVIDIA kernels into RDNA3-native ones. HIP on consumer AMD, yes. Architecture-specific kernel work, no. That is a separate job. If someone later asks the same pipeline for a full kernel rewrite, he thinks it should cope. We have not shown that here.
+
+Proof, in his words: benches on his dashboard, which has to be re-run because the board died, and a private branch that holds the pipeline. Not a GitHub URL we can paste.
+
+The picture:
+
+![Milvus to AMD RDNA agentic porting pipeline, v3](Deck/milvus_pipeline_architecture_v3.png)
+
+Grey boxes are ordinary build/data steps. Orange is the agent. Green is a gate. Purple is a human.
+
+It starts from upstream hipVS / hipRAFT (ROCm-DS 25.10, Instinct-tested). A hermetic preflight pins ROCm and CMake, hides the iGPU, and asserts `gfx1100`, warp size, `kIndexGroupSize`. Then the agent loop: wave64 toward wave32, masks and reductions, runtime warpSize, indexes in order BRUTE_FORCE → IVF_FLAT → IVF_PQ → CAGRA. A CUDA golden (per-kernel diff) sits on the side for debug. hipVS gtests are bucketed: real port fail, harness, env, or a known gap. New fails outside a frozen manifest stop the run. A human is allowed to add a gap to that list. Knowhere is a build-system port (Conan, shims, dual CUDA/HIP flags), then the GPU library swap, cuVS for hipVS, then Milvus itself on gfx1100.
+
+Recall is gated against exact-kNN, including a peer-GPU check. After that a *read-only* agent looks at the diff: instrumentation is fine, weakening the test is not. A person looks again. CI on an internal GHES fork, self-hosted gfx1100 runner, clean rebuild. Benchmarks are not run by the agent: VectorDBBench, GPU isolated, GIST-1M, nprobe sweep, after the harness has checked itself. A provenance gate wants a sealed `GPU_CUVS_*` (or the HIP equivalent), flush, load, and rocm-smi VRAM/util in a sane window. Metrics: recall, QPS, p99, VRAM. Triage is labelled, a human looks, and the verdict is correctness. Slow QPS is not a fail by itself.
+
+So: I used agents as a pair of extra hands. Maksim tried to close the loop and keep people at review and verdict. Same stack, two methods. His numbers are not the plots in the next section; those are the nightly pair of boxes after the 4080 existed. If his dashboard comes back, we can put his run next to that — after he says this description is not nonsense.
 
 ## Two cards, same night job
 
@@ -110,9 +134,12 @@ What I want next on Milvus is CAGRA (done properly) and that PQ hole at high npr
 
 ## Code
 
-- Milvus HIP: [https://github.com/krainov/milvus-hip](https://github.com/krainov/milvus-hip)
+Public trees for the AI-assisted line (section 1), not Maksim's closed pipeline:
+
 - Knowhere HIP: [https://github.com/konkolchin/knowhere-hip](https://github.com/konkolchin/knowhere-hip)
 - hipVS (gfx1100 patches, packer / launch defaults): [https://github.com/konkolchin/hipVS](https://github.com/konkolchin/hipVS)
 - Harness, layer scripts, recipes: [https://github.com/konkolchin/ann-harness-amd](https://github.com/konkolchin/ann-harness-amd)
 
-README in the Milvus fork, then `run_milvus_layer4*` in the harness, is the least painful way in.
+Maksim's agent pipeline lives in a private branch. We are not linking a GitHub URL for it until he publishes one.
+
+README in the Knowhere/hipVS forks, then `run_milvus_layer4*` in the harness, is the least painful way in.
