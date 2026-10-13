@@ -4,11 +4,11 @@
 
 ---
 
-The first machine was the AMD one sitting here: Ryzen 7 7700X, RX 7900 XTX, 64 GB, Ubuntu 22.04. Consumer parts, not a rack. The workload was RAG retrieval. You turn documents into embeddings, you turn a question into an embedding, and you ask which stored vectors are nearest to that question. People call that ANN — approximate nearest neighbours. The vectors usually live in a vector database. I wanted the nearest-neighbour lookup on the GPU, and I wanted it inside the database RAG people actually use.
+I needed a RAG database on the box I already had. I wanted Milvus: it is the most popular open-source one for that (~46k GitHub stars). The GPU in that box was a consumer Radeon. Milvus GPU indexes run on NVIDIA cards. Not on this one.
 
-Milvus, then. Most popular open-source vector database for that (~46k GitHub stars). On NVIDIA cards it already does ANN on the GPU. On the 7900 XTX in front of me, it didn't.
+What RAG retrieval actually does: embed the documents, embed the question, then find which stored vectors sit nearest to the question. ANN. Approximate nearest neighbours. I wanted that lookup on the GPU, inside Milvus, not as a side library.
 
-CPU Milvus was fine, by the way. Same box, same collection, nearest neighbours came back, they were just slower, and I already knew the CPU path worked. The NVIDIA GPU docker images are NVIDIA, obviously. Under the hood the search engine is Knowhere, and Knowhere talks to cuVS / RAFT. AMD's counterpart is hipVS; version 0.1.0 is for Instinct in the datacentre. So I had a perfectly good Radeon in the case and Milvus had no GPU indexes I could run on it. I started with the CUDA search code and tried to get it through HIP on this machine.
+CPU Milvus was fine, by the way. Same box, same collection, nearest neighbours came back, they were just slower, and I already knew the CPU path worked. The NVIDIA GPU docker images are NVIDIA, obviously. Under the hood the search engine is Knowhere, and Knowhere talks to cuVS / RAFT. AMD's counterpart is hipVS; version 0.1.0 is for Instinct in the datacentre. The Radeon was in the case. Milvus had no GPU indexes I could run on it. I started with the CUDA search code and tried to get it through HIP on this machine.
 
 We ended up with two index types working all the way through on the 7900 XTX. `GPU_IVF_FLAT` keeps the vectors uncompressed inside IVF clusters. `GPU_IVF_PQ` compresses them with product quantization, which saves VRAM and costs a bit of recall. Line is Milvus v2.5.4, Knowhere rebuilt for HIP, hipVS underneath. The same tests run on the NVIDIA build and on the AMD one. If the neighbour IDs diverge, we don't get to talk about speed.
 
