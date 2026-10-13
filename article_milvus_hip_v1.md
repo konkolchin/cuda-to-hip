@@ -1,4 +1,4 @@
-# Milvus GPU search on a Radeon
+# Nearest-neighbour search in Milvus, on a Radeon
 
 *A CUDA-to-HIP port that returns the same neighbors. First draft — one text for Medium, LinkedIn (cut later), and the AMD blog.*
 
@@ -6,11 +6,11 @@
 
 ---
 
-The machine on the desk was a Ryzen 7 7700X and a Radeon RX 7900 XTX. 64 GB of RAM. Ubuntu 22.04. A consumer box. I wanted GPU nearest-neighbour search for RAG — embeddings in, neighbours out — in the database people actually use for that.
+The machine on the desk was a Ryzen 7 7700X and a Radeon RX 7900 XTX. 64 GB of RAM. Ubuntu 22.04. A consumer box. I wanted a RAG stack: text turned into embeddings (long lists of numbers), then a lookup that, for a new embedding, finds the closest stored ones. That lookup is approximate nearest-neighbour search (ANN). People keep the vectors in a vector database. I wanted the heavy lookup on the GPU, in the database people actually use for that.
 
-I picked Milvus because it is the most popular open-source vector database for RAG / ANN (~46k GitHub stars). We needed GPU search in that stack. On a consumer Radeon it did not exist.
+I picked Milvus because it is the most popular open-source vector database for RAG / ANN (~46k GitHub stars). On NVIDIA, Milvus already does that ANN on the GPU. On a consumer Radeon it did not.
 
-CPU Milvus already ran on the same host. That was not the question. Stock GPU images are NVIDIA. The search engine, Knowhere, talks to cuVS / RAFT. hipVS 0.1.0, the AMD analog, covers Instinct in the datacentre. On this RX 7900 XTX, GPU search did not exist. The card was in the case. Milvus had no GPU indexes for it. I took the CUDA search code and started making it run as HIP on this machine.
+CPU Milvus already ran on the same host. That was not the question — the CPU can find nearest neighbours; it is just slower, and it was not the missing piece. Stock GPU images are NVIDIA. The search engine, Knowhere, talks to cuVS / RAFT. hipVS 0.1.0, the AMD analog, covers Instinct in the datacentre. On this RX 7900 XTX, those GPU indexes did not run. The card was in the case. Milvus had nothing on it for ANN. I took the CUDA search code and started making it run as HIP on this machine.
 
 Two index types, end to end, on an RX 7900 XTX: `GPU_IVF_FLAT` (vectors kept uncompressed inside IVF clusters) and `GPU_IVF_PQ` (product quantization, less VRAM, a recall tax). Public tech-preview line: Milvus v2.5.4, Knowhere rebuilt through HIP, hipVS underneath. Same test suite on the NVIDIA build and the AMD build. Neighbours have to match.
 
@@ -106,7 +106,7 @@ Which card “wins” depends on the index and on nprobe. Uncompressed: Radeon. 
 
 Yes.
 
-GPU search runs on the consumer Radeon I already had. Two IVF indexes build, load, and search. The same correctness gate that runs on the 4080 runs on the 7900 XTX. The 4080 is there so those sentences have plots behind them.
+ANN on the GPU now runs on the consumer Radeon I already had. Two IVF indexes build, load, and return neighbours. The same correctness gate that runs on the 4080 runs on the 7900 XTX. The 4080 is there so those sentences have plots behind them.
 
 What this is not: full NVIDIA feature parity. Not Instinct. Not collections that spill out of VRAM. Not CAGRA as a product index. Not an official AMD drop of Milvus. A tech-preview fork, measured on two consumer cards, with a dashboard that still runs at night.
 
@@ -121,4 +121,4 @@ Next on Milvus: more GPU index types, starting with CAGRA, and the compressed hi
 
 Start from the Milvus fork README and the harness `run_milvus_layer4*` scripts. Hide the iGPU (`ROCR_VISIBLE_DEVICES=0`). Do not run a Docker `milvus-standalone` next to the HIP binary and then wonder whose `libcuvs` you loaded.
 
-I needed GPU vector search on a Radeon. The indexes build. The neighbours match. The QPS depends on the recipe. That is the whole story.
+I needed nearest-neighbour lookup on a Radeon. The indexes build. The neighbours match. The QPS depends on the recipe. That is the whole story.
