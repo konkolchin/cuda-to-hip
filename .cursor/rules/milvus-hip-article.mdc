@@ -1,0 +1,19 @@
+---
+description: Voice and facts for the single Milvus CUDA→HIP article (LinkedIn / Medium / AMD blog)
+globs: "**/article_milvus*.md,**/MILVUS*article*,**/*linkedin*milvus*"
+alwaysApply: false
+---
+
+# Milvus HIP article — voice and facts
+
+Use when drafting or editing the canonical article or its LinkedIn/Medium/AMD cuts.
+
+- One paper, three placements. Same facts, same plots, same caveats.
+- English for the canonical text. First person ("I" / "we") is fine.
+- Compromise story: AMD Ryzen + RX 7900 XTX first (consumer / low-budget box — name the SKUs, no price multiple); NVIDIA RTX 4080 funded later for benchmark and publication. Not a fake startup.
+- Why Milvus: it is the most popular open-source vector DB for RAG/ANN (~46k GitHub stars, Deck slide 2). Not "there were no other options." GPU path was CUDA-only on consumer Radeon.
+- Public QPS/plots: `Deck/Slide4-6.jpg` (nightly dashboard, GIST-1M, 1000-run median). Deck wins over older one-shot harness tables.
+- Agent workflow: Cursor + Grok; consult Maxim before describing multi-agent architecture. Leave a placeholder rather than guessing.
+- Ban corporate gloss. Prefer warp32, sealed index, nprobe, QPS, CMake, empty neighbors.
+
+Full voice rules: repo-root `.cursorrules` (UTF-8). That file is for article drafts only, not for HIP/CMake work.
