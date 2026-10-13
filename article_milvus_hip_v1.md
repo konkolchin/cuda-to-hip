@@ -4,7 +4,7 @@
 
 ---
 
-I had a Ryzen 7 7700X and an RX 7900 XTX on the desk, 64 GB of RAM, Ubuntu 22.04. Nothing fancy. What I wanted was a RAG setup: take text, turn it into embeddings (just long vectors of floats), and, for a new vector, find which stored ones sit closest to it. That job has a name, approximate nearest-neighbour search, ANN if you are already in the weeds. The usual place to keep the vectors is a vector database. I also wanted the slow part — the lookup — to run on the GPU, and I wanted it in the database people actually put in RAG stacks.
+I had a Ryzen 7 7700X and an RX 7900 XTX on the desk, 64 GB of RAM, Ubuntu 22.04. Nothing fancy. The workload was RAG retrieval. You turn documents into embeddings, you turn a question into an embedding, and you ask which stored vectors are nearest to that question. People call that ANN — approximate nearest neighbours. The vectors usually live in a vector database. I wanted the nearest-neighbour lookup on the GPU, and I wanted it inside the database RAG people actually use.
 
 Milvus, then. Most popular open-source vector database for that (~46k GitHub stars). On NVIDIA cards it already does ANN on the GPU. On the 7900 XTX in front of me, it didn't.
 
