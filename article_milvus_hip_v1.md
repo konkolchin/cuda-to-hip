@@ -1,10 +1,10 @@
-# Nearest-neighbour search in Milvus, on a Radeon
+# Getting Milvus nearest-neighbour lookup to run on the 7900 XTX
 
 *First draft — one text for Medium, LinkedIn (cut later), and the AMD blog. Crop `Deck/Slide5.jpg` and `Deck/Slide6.jpg` to the charts before publishing; those files are still full DXC slides. Hardware is `Deck/Slide12.jpg`. If an older one-shot harness table disagrees with the dashboard, believe the dashboard.*
 
 ---
 
-I had a Ryzen 7 7700X and an RX 7900 XTX on the desk, 64 GB of RAM, Ubuntu 22.04. Nothing fancy. The workload was RAG retrieval. You turn documents into embeddings, you turn a question into an embedding, and you ask which stored vectors are nearest to that question. People call that ANN — approximate nearest neighbours. The vectors usually live in a vector database. I wanted the nearest-neighbour lookup on the GPU, and I wanted it inside the database RAG people actually use.
+The first machine was the AMD one sitting here: Ryzen 7 7700X, RX 7900 XTX, 64 GB, Ubuntu 22.04. Consumer parts, not a rack. The workload was RAG retrieval. You turn documents into embeddings, you turn a question into an embedding, and you ask which stored vectors are nearest to that question. People call that ANN — approximate nearest neighbours. The vectors usually live in a vector database. I wanted the nearest-neighbour lookup on the GPU, and I wanted it inside the database RAG people actually use.
 
 Milvus, then. Most popular open-source vector database for that (~46k GitHub stars). On NVIDIA cards it already does ANN on the GPU. On the 7900 XTX in front of me, it didn't.
 
@@ -29,22 +29,20 @@ pymilvus
 
 Pulling `milvusdb/milvus:*-gpu` on a Radeon is a waste of an afternoon. Milvus Lite / CPU also doesn't go near this stack. GPU on AMD meant compiling from source. I still trip over that when I switch machines.
 
-We didn't do a weekend find-and-replace of cuVS for hipVS. It went in layers, and the next layer didn't start until the previous one had a green gate:
+We didn't do a weekend find-and-replace of cuVS for hipVS. It went in layers. I didn't start the next one until the previous gate was green.
 
-| Layer | What | Pass |
-| --- | --- | --- |
-| 0 | ROCm + CPU Milvus | `gfx1100` visible; Standalone healthy |
-| 1 | hipRAFT / hipVS | Build; neighbour tests |
-| 1.5 | IVF packer on RDNA3 | Float IVF gtests 98/98 after `kIndexGroupSize = 32` (warp 32) |
-| 2 | Knowhere + HIP | GPU L2 search tests green |
-| 3 | Milvus source | Sealed `GPU_IVF_*` build / load / search |
-| 4 | Fair benches | Same correctness gate as CUDA; QPS vs nprobe |
+0. ROCm plus CPU Milvus: `gfx1100` shows up, Standalone answers.
+1. hipRAFT / hipVS builds, neighbour tests pass.
+1.5. IVF packer on RDNA3. This is the warp-32 mess below. After `kIndexGroupSize = 32`, float IVF gtests were 98/98.
+2. Knowhere with HIP: GPU L2 search tests green.
+3. Milvus from source, sealed `GPU_IVF_*` build / load / search.
+4. Fair benches against CUDA, QPS vs nprobe, same correctness gate.
 
 Layer 1.5 still annoys me. NVIDIA warps are 32 threads; a pile of RDNA3 code still assumes 64. The IVF packer grouped vectors the wrong way, and search came back with empty neighbour lists, or with IDs that belonged to someone else. The run itself looked healthy. Recall didn't. Fix was `kIndexGroupSize = 32` plus `USE_WARPSIZE_32`. After that the float IVF gtests were 98/98.
 
 We also poked at a “smarter” PQ score loop. QPS didn't move. I reverted it. What did stick, on the library side only, is launching hipVS PQ search with `blockDim = 512` by default on this GPU — stock hipVS picks block sizes with an NVIDIA occupancy heuristic, and gfx1100 doesn't love it. That's a library microbench. The Milvus plots below are a different measurement. If you overlay them you will confuse yourself.
 
-`GPU_CAGRA` — unfiltered search exists in the lab. Filtered search, bitsets, deletes: I would not ship that as a headline. It's the next index, not this write-up.
+`GPU_CAGRA` can search the whole index on this GPU in the lab. If you need to skip rows — a filter expression, deletes, TTL — don't use it here yet. That is a later piece of work, not this article.
 
 ## How we ported with agents
 
