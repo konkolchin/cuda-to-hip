@@ -1,6 +1,8 @@
 # Getting Milvus nearest-neighbour lookup to run on the 7900 XTX
 
-*First draft — one text for Medium, LinkedIn (cut later), and the AMD blog. Crop `Deck/Slide5.jpg` and `Deck/Slide6.jpg` to the charts before publishing; those files are still full DXC slides. Hardware is `Deck/Slide12.jpg`. If an older one-shot harness table disagrees with the dashboard, believe the dashboard.*
+*First draft. One piece of text, three places: Medium, LinkedIn, AMD blog if they take it.*
+
+<!-- Before publish: crop Deck/Slide5.jpg and Slide6.jpg to the plots (full DXC slides today). Machine list is Deck/Slide12.jpg. Dashboard plots win over old one-shot harness tables. -->
 
 ---
 
