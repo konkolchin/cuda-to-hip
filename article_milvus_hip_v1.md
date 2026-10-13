@@ -10,9 +10,7 @@ The machine on the desk was a Ryzen 7 7700X and a Radeon RX 7900 XTX. 64 GB of R
 
 I picked Milvus because it is the most popular open-source vector database for RAG / ANN (~46k GitHub stars). We needed GPU search in that stack. On a consumer Radeon it did not exist.
 
-CPU Milvus already ran on the same host. That was not the question. Stock GPU images are NVIDIA. The search engine, Knowhere, talks to cuVS / RAFT. hipVS 0.1.0, the AMD analog, covers Instinct in the datacentre. On this RX 7900 XTX, GPU search did not exist. You could buy the GPU. You could not search on it.
-
-So we ported the GPU path.
+CPU Milvus already ran on the same host. That was not the question. Stock GPU images are NVIDIA. The search engine, Knowhere, talks to cuVS / RAFT. hipVS 0.1.0, the AMD analog, covers Instinct in the datacentre. On this RX 7900 XTX, GPU search did not exist. The card was in the case. Milvus had no GPU indexes for it. I took the CUDA search code and started making it run as HIP on this machine.
 
 Two index types, end to end, on an RX 7900 XTX: `GPU_IVF_FLAT` (vectors kept uncompressed inside IVF clusters) and `GPU_IVF_PQ` (product quantization, less VRAM, a recall tax). Public tech-preview line: Milvus v2.5.4, Knowhere rebuilt through HIP, hipVS underneath. Same test suite on the NVIDIA build and the AMD build. Neighbours have to match.
 
