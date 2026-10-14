@@ -106,7 +106,7 @@ If the IDs are wrong, QPS is a video-game score. We look at correctness first.
 
 `GPU_IVF_FLAT`, GIST-1M, median of those 1,000 sweeps, one night.
 
-![GPU_IVF_FLAT on GIST-1M: median QPS vs nprobe, RX 7900 XTX vs RTX 4080](Deck/Slide5.jpg)
+![GPU_IVF_FLAT on GIST-1M: median QPS vs nprobe, RX 7900 XTX vs RTX 4080](Deck/fig_gist_flat_qps.jpg)
 
 Red is the 7900 XTX, green is the 4080. Up is more queries per second. As you go right, nprobe grows and each query looks at more clusters.
 
@@ -118,7 +118,7 @@ I should say this clearly: those kernels were written for NVIDIA and we are runn
 
 `GPU_IVF_PQ`, GIST-1M, same night, same two boxes.
 
-![GPU_IVF_PQ on GIST-1M: median QPS vs nprobe, RX 7900 XTX vs RTX 4080](Deck/Slide6.jpg)
+![GPU_IVF_PQ on GIST-1M: median QPS vs nprobe, RX 7900 XTX vs RTX 4080](Deck/fig_gist_pq_qps.jpg)
 
 Same axes as the previous figure. Somewhere around nprobe 32 the lines cross. Left of that, AMD. Right of that, NVIDIA. PQ has packed each vector into a short code, so you are in a different kernel than FLAT, which is the whole point of the second plot.
 
