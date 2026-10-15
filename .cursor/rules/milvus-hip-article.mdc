@@ -1,0 +1,16 @@
+---
+description: AMD ROCm blog style plus frozen facts for the Milvus CUDA-to-HIP article
+globs: "**/article_milvus*.md,**/MILVUS*article*,**/*linkedin*milvus*"
+alwaysApply: false
+---
+
+# Milvus HIP article — AMD blog voice
+
+Follow repo-root `.cursorrules` (ROCm Blogs wiki). Article drafts only.
+
+- Readers worldwide. Simple English. Short sentences. Active voice. **We** / **our** only — never I, me, my, and never personal names. Two methods = two parts of the team, still "we". No sentence-count cap per paragraph.
+- Technical how-to, not a sales pitch. No American slang, no slogan headings.
+- Title states the goal. Open on the job (RAG / Milvus / Radeon), not on a parts list.
+- RTX 4080 compare next to cropped dashboard charts, not in the first screen.
+- Facts, plots, and the two agent tracks: see `.cursorrules` [FACTS].
+- No public URL for the closed agent pipeline until that tree is published.
