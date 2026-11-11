@@ -192,14 +192,14 @@ Software & Stage cut (first result $\to$ later gates) & Fit for a staged AMD pit
 \midrule
 \endhead
 Madagascar CUDA modules &
-L0: CPU Madagascar.
-L1: one FD programme (e.g.\ 2D/\allowbreak3D \texttt{gpufd}).
-L2: 2D RTM.
-L3: 3D/elastic or Kirchhoff.
-L4: same recipe on Radeon vs NVIDIA, recall/timing gate. &
+L0: CPU Madagascar (\texttt{scons}, RSF).
+L1: HIP of \texttt{Mgpufd3d} (3-D acoustic FD).
+L2: \texttt{Mgpurtm} (2-D RTM).
+L3: \texttt{Mgpufwi} (time-domain FWI).
+L4: Kirchhoff textures + elastic 2-D/3-D P2P; Radeon vs NVIDIA. &
 \textbf{Best fit.}
-Many separate \texttt{.cu} programmes.
-First module is a full demo; the rest is more of the same. \\
+Each programme is a full GPU result.
+Stage~1 is one stencil; later gates are more of the same class. \\
 2D3D-TI-FD-RTM-cuda &
 L1: 2D VTI forward.
 L2: 2D RTM.
@@ -312,5 +312,47 @@ production rates vs NVIDIA AMGX-CPR on a named deck.
 
 SPE10 / hard compositional / mechanics at AMGX-CPR iteration counts;
 binary-compatible \texttt{AMGX\_solver\_setup}; cuDSS / cuSOLVER.
+
+\section{Madagascar CUDA modules: stage~1 and later gates}
+
+Stage~1 hipifies \textbf{one Madagascar CUDA programme}, not the whole \texttt{user/} tree.
+The rest stay CUDA until later gates.
+Madagascar is SCons/RSF: each \texttt{M*.cu} builds to one \texttt{sf*} command with its own test recipe.
+
+The CUDA units are already separate:
+
+\begin{itemize}
+\item \texttt{user/pyang/Mgpufd3d.cu} --- 3-D acoustic finite difference (Micikevicius stencil).
+\item \texttt{user/pyang/Mgpurtm.cu} + \texttt{cuda\_rtm\_kernels.cu} --- 2-D prestack RTM, CPML, effective-boundary save.
+\item \texttt{user/pyang/Mgpufwi.cu} --- time-domain FWI (Enquist ABC, gradient/CG).
+\item \texttt{user/cuda/Mgpuktmig.cu} --- 2-D/3-D Kirchhoff PSTM; \texttt{cudaArray} and texture interpolation.
+\item \texttt{user/rweiss/Mewefd2d\_gpu.cu} --- 2-D elastic FD (Weiss/Shragge).
+\item \texttt{user/rweiss/Mewefd3d\_gpu\_p2p.cu} --- 3-D elastic FD, multi-GPU halo exchange (\texttt{cudaMemcpyDefault}).
+\end{itemize}
+
+\subsection*{Stage~1 (honest first AMD result)}
+
+HIP of \texttt{Mgpufd3d} only: \texttt{cudaMalloc}/\texttt{cudaMemcpy}/kernels $\to$ HIP, one GPU, no textures, no P2P.
+
+Gate: CPU Madagascar still builds.
+The HIP binary runs a small 3-D shot (Ricker, one source).
+Seismograms match the CUDA binary within a stated residual (max abs or RMS on traces), not a visual plot only.
+Runtime on the Radeon is recorded next to the NVIDIA run of the same recipe.
+
+That is already a GPU modelling result AMD can see.
+The remaining programmes are the same stencil class, so ``weeks'' is credible.
+
+\subsection*{Later gates (if AMD accepts stage~1)}
+
+\begin{enumerate}
+\item Gate~2: \texttt{Mgpurtm} --- 2-D RTM (forward + adjoint, CPML, boundary reconstruction, correlation image).
+Compare the image (and a mute/Laplacian if the CUDA path applies one) to the NVIDIA binary on a tiny Marmousi-style slice.
+\item Gate~3: \texttt{Mgpufwi} --- time-domain FWI loop on the same 2-D stencil; objective decreases; inverted model is not required to match NVIDIA iterate-for-iterate.
+\item Gate~4: Kirchhoff \texttt{Mgpuktmig} (replace \texttt{cudaArray}/textures with HIP texture objects or explicit interpolation) and elastic \texttt{Mewefd2d\_gpu}, then \texttt{Mewefd3d\_gpu\_p2p} (peer copy is a named sub-gate, not silent).
+\end{enumerate}
+
+\subsection*{What not to promise in stage~1}
+
+Multi-GPU P2P elastic 3-D; Kirchhoff texture interpolation; pinned/mapped host memory for RTM boundaries; FWI that matches NVIDIA iteration counts; a hipify of every Madagascar \texttt{user/*/} directory.
 
 \end{document}
