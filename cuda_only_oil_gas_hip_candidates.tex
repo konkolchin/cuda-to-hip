@@ -201,13 +201,13 @@ L4: Kirchhoff textures + elastic 2-D/3-D P2P; Radeon vs NVIDIA. &
 Each programme is a full GPU result.
 Stage~1 is one stencil; later gates are more of the same class. \\
 2D3D-TI-FD-RTM-cuda &
-L1: 2D VTI forward.
-L2: 2D RTM.
-L3: 3D and/or TTI.
-L4: ADCIGs. &
+L1: HIP of \texttt{vti2d\_FD\_RTM} with \texttt{kind=1} (2-D VTI forward).
+L2: same binary \texttt{kind=2} (2-D VTI RTM).
+L3: \texttt{vti3Dfd} then \texttt{vti3Drtm}.
+L4: TTI FD/RTM, Poynting ADCIGs, elastic TTI FD. &
 Good.
-Smaller than Madagascar, still four gates.
-First result is already imaging. \\
+Makefile already lists six targets.
+Stage~1 is one 2-D shot; imaging and 3-D are named later gates. \\
 open-DARTS &
 L0: CPU \texttt{open-darts} (FGMRES+CPR).
 L1: HIP adapter \texttt{RocGMRESILU0} / \texttt{RocBiCGStabJacobi}
@@ -218,10 +218,6 @@ L4: remaining CUDA engine kernels; rates vs NVIDIA AMGX-CPR. &
 Large enough.
 Stage~1 is a real GPU Newton on a small dead-oil/geothermal case.
 AMGX-CPR analogue is a named later gate. \\
-NVIDIA AMGX &
-One Krylov method, then smoothers, then aggregation AMG, then MPI. &
-Divisible as a library, not as an O\&G product.
-AMD already points people at rocALUTION. \\
 Deepwave / SWEEP / TorchFWI &
 CPU or eager PyTorch (ROCm torch) first;
 then one compiled propagator;
@@ -247,8 +243,8 @@ Under the stage rule, lead with a tree you can stop after gate~1 and still have 
 \begin{enumerate}
 \item \textbf{Madagascar CUDA modules} --- first HIP FD or 2D RTM programme, measured on a Radeon;
 remaining programmes are the same stencil class, so ``weeks'' is credible.
-\item \textbf{2D3D-TI-FD-RTM-cuda} --- if the pitch is anisotropic RTM only;
-2D VTI first, 3D/TTI next.
+\item \textbf{2D3D-TI-FD-RTM-cuda} --- stage~1 is 2-D VTI forward (\texttt{kind=1});
+RTM, 3-D, TTI, and ADCIGs are later named gates.
 \item \textbf{open-DARTS} --- stage~1 is rocALUTION GMRES/BiCGStab + ILU(0)/Jacobi
 inside DARTS; the AMGX-CPR analogue is a later named gate.
 \end{enumerate}
@@ -308,6 +304,26 @@ Rates match within a stated residual, not AMGX iteration counts.
 production rates vs NVIDIA AMGX-CPR on a named deck.
 \end{enumerate}
 
+\subsection*{If rocALUTION lacks a solver DARTS needs}
+
+We will put generic solvers in rocALUTION pull requests and keep DARTS-only composition in DARTS.
+A HIP DARTS path that uses rocALUTION, then fills gaps upstream, does not compete with AMGX.
+AMD already points people at rocALUTION.
+A pull request they can merge is a better pitch than a private AMGX clone.
+
+What belongs in a rocALUTION pull request:
+Krylov methods or preconditioners any sparse code would use (HIP-side AMG setup, which is host-only today; stronger ILU(0) / block-ILU on GPU; missing smoothers);
+tests on public matrices, not a DARTS deck;
+the rocALUTION C++ style, license, and CI.
+
+What does not belong in rocALUTION:
+CPR (AMG on pressure, ILU on saturation/wells) --- that stays in DARTS as gate~3, calling rocALUTION AMG and ILU;
+DARTS \texttt{block\_row\_perm}, mineral/thermal well rows, operator-linearization kernels;
+a JSON/C clone of \texttt{AMGX\_solver\_setup}.
+
+If stage~1 (GMRES/BiCGStab + Jacobi/ILU0) already runs a small dead-oil case, missing AMG-on-HIP setup or block-ILU is the kind of gap we implement in rocALUTION and open as a pull request.
+If the gap is ``we need AMGX-CPR,'' we write CPR in DARTS and only pull-request the AMG/ILU pieces rocALUTION is missing.
+
 \subsection*{What not to promise in stage~1}
 
 SPE10 / hard compositional / mechanics at AMGX-CPR iteration counts;
@@ -354,5 +370,52 @@ Compare the image (and a mute/Laplacian if the CUDA path applies one) to the NVI
 \subsection*{What not to promise in stage~1}
 
 Multi-GPU P2P elastic 3-D; Kirchhoff texture interpolation; pinned/mapped host memory for RTM boundaries; FWI that matches NVIDIA iteration counts; a hipify of every Madagascar \texttt{user/*/} directory.
+
+\section{2D3D-TI-FD-RTM-cuda: stage~1 and later gates}
+
+Stage~1 hipifies \textbf{one Makefile target}, not the six CUDA programmes.
+The rest stay \texttt{nvcc} until later gates.
+The tree is \url{https://github.com/Rtoax/2D3D-TI-FD-RTM-cuda}:
+quasi-acoustic VTI/TTI finite difference, RTM, Poynting ADCIGs, GPL.
+
+The CUDA units (from the Makefile) are already separate:
+
+\begin{itemize}
+\item \texttt{vti2d\_FD\_RTM} $\leftarrow$ \texttt{Toa\_gpu2DvtiFdRtmAdcigsLaplace.cu} ---
+2-D quasi-acoustic VTI; \texttt{kind=1} forward, \texttt{kind=2} RTM (Laplace image, optional ADCIGs).
+\item \texttt{vti3Dfd} $\leftarrow$ \texttt{Toa\_gpu\_3dvti\_fd\_1orderfunciton.cu} --- 3-D VTI forward.
+\item \texttt{vti3Drtm} $\leftarrow$ \texttt{Toa\_gpu\_3dvti\_rtm\_adcigs\_1orderfunction.cu} --- 3-D VTI RTM + ADCIGs.
+\item \texttt{tti2d\_acousticFD} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_fd\_1orderfunction.cu} --- 2-D TTI acoustic forward.
+\item \texttt{tti2d\_acousticRTM} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_rtm\_adcigs\_1orderfunciton.cu} --- 2-D TTI RTM + ADCIGs.
+\item \texttt{tti2d\_elasticFD} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_fd\_elastic.cu} --- 2-D TTI elastic forward.
+\end{itemize}
+
+\subsection*{Stage~1 (honest first AMD result)}
+
+HIP of \texttt{vti2d\_FD\_RTM} built with \texttt{hipcc} instead of the Makefile's \texttt{nvcc}.
+Run \texttt{kind=1} only: 2-D VTI forward, one GPU, one shot, $\varepsilon$ and $\delta$ in the VTI stress--velocity update.
+
+Gate: the HIP binary writes a shot gather that matches the CUDA binary within a stated residual (max abs or RMS on traces).
+Runtime on the Radeon is recorded next to NVIDIA on the same velocity/epsilon/delta files.
+Do not score the RTM image in stage~1 even though it lives in the same \texttt{.cu}.
+
+That is already anisotropic GPU modelling AMD can see.
+The same file's \texttt{kind=2} path is the next gate, so ``weeks'' is credible.
+
+\subsection*{Later gates (if AMD accepts stage~1)}
+
+\begin{enumerate}
+\item Gate~2: same binary, \texttt{kind=2} --- 2-D VTI RTM (source and receiver wavefields, correlation, Laplace filter).
+Compare the migration volume to the NVIDIA binary on a tiny VTI slice, not ADCIGs yet.
+\item Gate~3: \texttt{vti3Dfd} then \texttt{vti3Drtm} --- 3-D VTI forward, then 3-D RTM.
+Memory and launch geometry change; treat 3-D RTM as its own sub-gate if the forward already passes.
+\item Gate~4: TTI (\texttt{tti2d\_acousticFD}, then RTM), Poynting ADCIGs (\texttt{nangle}/\texttt{dangle} gathers vs NVIDIA), then elastic TTI FD.
+ADCIGs and elasticity are named sub-gates, not silent extras.
+\end{enumerate}
+
+\subsection*{What not to promise in stage~1}
+
+3-D grids; TTI (tilt angle); elastic TTI; Poynting ADCIGs; RTM images; a hipify of all six targets in one drop;
+matching NVIDIA ADCIG energy after illumination.
 
 \end{document}
