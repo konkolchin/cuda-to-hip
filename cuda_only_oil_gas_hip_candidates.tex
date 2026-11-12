@@ -1,0 +1,421 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{parskip}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black
+}
+
+\title{CUDA-only open-source oil-and-gas simulation software\\
+for a possible HIP port}
+\author{Internal survey (CUDA-to-HIP)}
+\date{11 November 2026}
+
+\begin{document}
+\maketitle
+
+\noindent
+True \textbf{CUDA-only} oil-and-gas simulation code is thinner than it looks.
+Several headline simulators already have an AMD path.
+Those are listed first so they are not sold to AMD as a net-new HIP port.
+
+\section*{Already on AMD (skip as a first HIP pitch)}
+
+\begin{longtable}{@{}p{0.32\textwidth}p{0.62\textwidth}@{}}
+\toprule
+Software & Why it is not a CUDA-only gap \\
+\midrule
+\endhead
+\href{https://github.com/OPM/opm-simulators}{OPM Flow} &
+GPU linear solver; CMake \texttt{CONVERT\_CUDA\_TO\_HIP=ON} \\
+\href{https://github.com/GEOS-DEV/GEOS}{GEOS} &
+\texttt{ENABLE\_HIP} next to \texttt{ENABLE\_CUDA} \\
+\href{https://github.com/OPM/LBPM/}{OPM LBPM} &
+CUDA and HIP in the tree \\
+\href{https://github.com/gfabieno/SeisCL/}{SeisCL} &
+CUDA \textbf{or OpenCL}, so AMD already works without HIP \\
+\bottomrule
+\end{longtable}
+
+Stars below: \textbf{demand}~=~how much an AMD O\&G / CCS / geothermal customer would care;
+\textbf{HIP ease}~=~how close a hipify-style port is
+(5~=~straightforward kernels, 1~=~NVIDIA-only stack).
+
+\section{Reservoir / subsurface flow}
+
+\begin{longtable}{@{}p{0.28\textwidth}p{0.38\textwidth}cc@{}}
+\toprule
+Software & What it is & Demand & HIP ease \\
+\midrule
+\endhead
+\href{https://gitlab.com/open-darts/open-darts}{\textbf{open-DARTS}}
+(TU Delft) &
+Open reservoir / geothermal / CCS / H$_2$ simulator.
+C++/CUDA engine, Python API, \texttt{platform='gpu'}.
+GPU path uses \textbf{NVIDIA AMGX}. &
+$\star$$\star$$\star$$\star$$\star$ &
+$\star$$\star$ \\
+\href{https://github.com/NVIDIA/AMGX}{\textbf{NVIDIA AMGX}} &
+GPU AMG + Krylov library.
+DARTS and other implicit simulators sit on it.
+CUDA-only.
+AMD's analogue is rocALUTION, not a drop-in. &
+$\star$$\star$$\star$$\star$$\star$ &
+$\star$ \\
+OPM Flow GPU remainder &
+Linear solver already hipifiable.
+Assembly / property evaluation / wells still mostly CPU.
+Completing that on HIP is work, but it is \textbf{upstream OPM},
+not a CUDA-only product. &
+$\star$$\star$$\star$$\star$ &
+$\star$$\star$$\star$ \\
+\bottomrule
+\end{longtable}
+
+\textbf{Best reservoir pitch:} DARTS on Instinct by replacing \emph{one} AMGX GPU solver
+call with a rocALUTION analogue inside DARTS's \texttt{LinearSolver} adapter
+(not a HIP of AMGX, not AMGX-CPR as a drop-in).
+That is the industrial story: black-oil / compositional / CCS on AMD without NVIDIA.
+
+\section{Seismic modelling, RTM, FWI}
+
+This is where CUDA-only code still dominates.
+Service companies already run RTM/FWI on NVIDIA.
+
+\begin{longtable}{@{}p{0.28\textwidth}p{0.38\textwidth}cc@{}}
+\toprule
+Software & What it is & Demand & HIP ease \\
+\midrule
+\endhead
+\href{https://github.com/ahay/src}{\textbf{Madagascar}} CUDA modules
+(\texttt{user/cuda}, \texttt{user/pyang}, \texttt{user/rweiss}) &
+Production-style FD modelling, Kirchhoff, 2D/3D RTM, elastic FD.
+Classic \texttt{.cu} + \texttt{cudaArray} / textures / multi-GPU P2P.
+GPL, used in academia and processing shops. &
+$\star$$\star$$\star$$\star$ &
+$\star$$\star$$\star$ \\
+\href{https://github.com/SEP-software/pyseis}{\textbf{pyseis}}
+(Stanford SEP) &
+Acoustic/elastic 2D--3D modelling, RTM, LSRTM, FWI.
+NVIDIA GPU + CUDA $\ge$10, NVIDIA Docker. &
+$\star$$\star$$\star$$\star$ &
+$\star$$\star$$\star$ \\
+\href{https://github.com/Rtoax/2D3D-TI-FD-RTM-cuda}{\textbf{2D3D-TI-FD-RTM-cuda}} &
+VTI/TTI FD modelling and RTM, ADCIGs.
+Almost all CUDA. &
+$\star$$\star$$\star$ &
+$\star$$\star$$\star$$\star$ \\
+\href{https://github.com/lidongzh/TorchFWI/}{\textbf{TorchFWI}} &
+Elastic FWI, multi-GPU, JIT CUDA, PyTorch. &
+$\star$$\star$$\star$ &
+$\star$$\star$ \\
+\href{https://github.com/ar4/deepwave}{\textbf{Deepwave}} &
+Differentiable acoustic/elastic/VTI FWI/RTM.
+CPU + \textbf{compiled CUDA} wheels. &
+$\star$$\star$$\star$$\star$ &
+$\star$$\star$ \\
+\href{https://github.com/DeepWave-KAUST/sweep}{\textbf{SWEEP}}
+(KAUST) &
+20+ wave equations, RTM/FWI.
+Eager PyTorch/JAX (could run on ROCm torch) \textbf{plus} prebuilt CUDA cores. &
+$\star$$\star$$\star$$\star$ &
+$\star$$\star$ \\
+\bottomrule
+\end{longtable}
+
+\textbf{Best seismic pitch:} Madagascar CUDA programmes or pyseis.
+Finite-difference stencils hipify well.
+Textures, \texttt{cudaArray}, and P2P need hand work.
+Deepwave/SWEEP look shinier for ML-FWI, but the hard part is a compiled CUDA backend
+plus PyTorch, not a clean C++ library.
+
+\section{Pore-scale (micro-CT, relative permeability, CCS in rock)}
+
+\begin{longtable}{@{}p{0.28\textwidth}p{0.38\textwidth}cc@{}}
+\toprule
+Software & What it is & Demand & HIP ease \\
+\midrule
+\endhead
+\href{https://github.com/Mahmoud-Sedahmed/MF-LBM-CUDA}{\textbf{MF-LBM-CUDA}} &
+LANL-lineage multiphase LBM (CO$_2$/brine, wetting).
+C++/CUDA, SoA, AA streaming.
+BSD-3. &
+$\star$$\star$$\star$ &
+$\star$$\star$$\star$$\star$ \\
+\href{https://github.com/PorousMediaSimulation/openLBMPM}{\textbf{openLBMPM}} &
+Shan-Chen / colour-gradient LBM in Python + CUDA/Numba. &
+$\star$$\star$ &
+$\star$$\star$$\star$ \\
+\href{https://github.com/SalehMohammadrezaei/LBM-Permeability}{\textbf{PoreWise}} &
+Permeability from 3D images; GPU path is \textbf{CuPy CUDA}. &
+$\star$$\star$ &
+$\star$$\star$$\star$ \\
+\bottomrule
+\end{longtable}
+
+LBM kernels are a good HIP demo.
+Demand is labs and core analysis, not a full-field operator licence.
+
+\section{Must be divisible into stages}
+
+The HIP job is not ``port the whole tree, then show AMD.''
+It has to cut like the Milvus ladder: a first gate that is a real GPU result,
+then later gates that can be promised in days or weeks if AMD accepts the first cut.
+
+A candidate is \textbf{large enough} if it has several independent CUDA units
+(programmes, physics, dimensions, or solver pieces), each with its own pass test.
+It is \textbf{too small} if the first HIP compile \emph{is} the whole product.
+It is \textbf{too lumpy} if the first useful result needs NVIDIA-only libraries
+(AMGX, compiled CUDA wheels) with no smaller shippable slice.
+
+Demand stars in the tables above are for the \emph{class} of workflow, not GitHub stars
+of the named repo. For a staged pitch, use uptake of \emph{this} tree as well.
+Example: pyseis is GPU RTM/FWI (high class demand) but
+\url{https://github.com/SEP-software/pyseis} has one star and no forks,
+so it is a reference, not a product AMD is waiting on.
+
+\begin{longtable}{@{}p{0.22\textwidth}p{0.48\textwidth}p{0.22\textwidth}@{}}
+\toprule
+Software & Stage cut (first result $\to$ later gates) & Fit for a staged AMD pitch \\
+\midrule
+\endhead
+Madagascar CUDA modules &
+L0: CPU Madagascar (\texttt{scons}, RSF).
+L1: HIP of \texttt{Mgpufd3d} (3-D acoustic FD).
+L2: \texttt{Mgpurtm} (2-D RTM).
+L3: \texttt{Mgpufwi} (time-domain FWI).
+L4: Kirchhoff textures + elastic 2-D/3-D P2P; Radeon vs NVIDIA. &
+\textbf{Best fit.}
+Each programme is a full GPU result.
+Stage~1 is one stencil; later gates are more of the same class. \\
+2D3D-TI-FD-RTM-cuda &
+L1: HIP of \texttt{vti2d\_FD\_RTM} with \texttt{kind=1} (2-D VTI forward).
+L2: same binary \texttt{kind=2} (2-D VTI RTM).
+L3: \texttt{vti3Dfd} then \texttt{vti3Drtm}.
+L4: TTI FD/RTM, Poynting ADCIGs, elastic TTI FD. &
+Good.
+Makefile already lists six targets.
+Stage~1 is one 2-D shot; imaging and 3-D are named later gates. \\
+open-DARTS &
+L0: CPU \texttt{open-darts} (FGMRES+CPR).
+L1: HIP adapter \texttt{RocGMRESILU0} / \texttt{RocBiCGStabJacobi}
+(one AMGX Krylov+prec piece, not AMGX-CPR).
+L2: FGMRES + rocALUTION AMG (setup on host).
+L3: CPR-like two-stage written in DARTS on rocALUTION.
+L4: remaining CUDA engine kernels; rates vs NVIDIA AMGX-CPR. &
+Large enough.
+Stage~1 is a real GPU Newton on a small dead-oil/geothermal case.
+AMGX-CPR analogue is a named later gate. \\
+Deepwave / SWEEP / TorchFWI &
+CPU or eager PyTorch (ROCm torch) first;
+then one compiled propagator;
+then 3D/elastic/FWI loop. &
+Lumpy.
+The compiled CUDA core is most of the GPU story.
+Eager ROCm torch is not a HIP port of \emph{their} kernels. \\
+MF-LBM-CUDA &
+Single-phase permeability, then two-phase, then wetting/CSF. &
+Borderline.
+One code path; two or three physics switches, not a stack.
+Fine as a kernel demo, thin as a multi-week remaining plan. \\
+openLBMPM, PoreWise, pyseis &
+Often one script / one Docker image. &
+Too small or too unused for a staged commercial pitch. \\
+\bottomrule
+\end{longtable}
+
+\section{What to take to AMD}
+
+Under the stage rule, lead with a tree you can stop after gate~1 and still have a GPU result.
+
+\begin{enumerate}
+\item \textbf{Madagascar CUDA modules} --- first HIP FD or 2D RTM programme, measured on a Radeon;
+remaining programmes are the same stencil class, so ``weeks'' is credible.
+\item \textbf{2D3D-TI-FD-RTM-cuda} --- stage~1 is 2-D VTI forward (\texttt{kind=1});
+RTM, 3-D, TTI, and ADCIGs are later named gates.
+\item \textbf{open-DARTS} --- stage~1 is rocALUTION GMRES/BiCGStab + ILU(0)/Jacobi
+inside DARTS; the AMGX-CPR analogue is a later named gate.
+\end{enumerate}
+
+Drop MF-LBM-CUDA as the headline if the remaining work after the first HIP run is only days:
+there is not enough left to sell as a programme.
+Do not lead with OPM, GEOS, LBPM, or SeisCL as if they had no AMD path.
+
+\section{open-DARTS stage~1: AMGX piece replaced by rocALUTION}
+
+Stage~1 replaces \textbf{one DARTS GPU linear-solver spec} with a rocALUTION analogue.
+It does not emulate the AMGX C/JSON API and it does not hipify AMGX.
+
+open-DARTS isolates solvers behind \texttt{self.linear\_solver.spec}.
+The GPU default is \textbf{AMGX-CPR}: nested GMRES/FGMRES plus Constrained Pressure Residual
+(AMG on pressure, ILU on the rest).
+That nested product has \textbf{no rocALUTION twin}.
+Krylov methods and simple preconditioners do.
+
+Keep the CUDA AMGX-CPR path. Add a HIP spec, for example
+\texttt{RocGMRESILU0SolverSpec} or \texttt{RocBiCGStabJacobiSolverSpec}:
+copy the CSR Jacobian and RHS from the DARTS engine into
+\texttt{rocalution::LocalMatrix} / \texttt{LocalVector}
+(or \texttt{SetDataPtrCSR} if the layout matches), then \texttt{Build} and \texttt{Solve} on the GPU.
+Interface work is one adapter class in DARTS \texttt{linear\_solvers}.
+AMGX is C plus JSON; rocALUTION is C++ objects.
+
+\subsection*{What maps (HIP-capable)}
+
+From the
+\href{https://rocm.docs.amd.com/projects/rocALUTION/en/latest/reference/rocALUTION-functionality-table.html}{rocALUTION functionality table}:
+
+\begin{itemize}
+\item Krylov on HIP: CG, BiCGStab, GMRES, FGMRES.
+\item Prec on HIP: Jacobi, BlockJacobi, ILU(0), MultiColored ILU(0,1).
+\item AMG: solve on HIP; setup/build on the host only.
+\end{itemize}
+
+DARTS GPU extras that do \textbf{not} map: cuDSS, cuSOLVER QR,
+AMGX-CPR as a single object, cuSPARSE block-ILU with DARTS \texttt{block\_row\_perm}
+(mineral/thermal well rows in the DARTS changelog).
+
+\subsection*{Stage~1 gate}
+
+One small CPU-open-source model that already runs with FGMRES+CPR on CPU
+(dead-oil or geothermal tutorial), now on HIP with the simple solver.
+Newton converges.
+Rates match within a stated residual, not AMGX iteration counts.
+
+\subsection*{Later gates (if AMD accepts stage~1)}
+
+\begin{enumerate}
+\item Gate~2: FGMRES + rocALUTION AMG as preconditioner (setup stays on host; say that in the pitch).
+\item Gate~3: CPR-like two-stage \textbf{written in DARTS} on rocALUTION
+(pressure AMG + saturation/well ILU). New code, not a library swap.
+\item Gate~4: HIP of remaining CUDA engine kernels (operator linearization, wells);
+production rates vs NVIDIA AMGX-CPR on a named deck.
+\end{enumerate}
+
+\subsection*{If rocALUTION lacks a solver DARTS needs}
+
+We will put generic solvers in rocALUTION pull requests and keep DARTS-only composition in DARTS.
+A HIP DARTS path that uses rocALUTION, then fills gaps upstream, does not compete with AMGX.
+AMD already points people at rocALUTION.
+A pull request they can merge is a better pitch than a private AMGX clone.
+
+What belongs in a rocALUTION pull request:
+Krylov methods or preconditioners any sparse code would use (HIP-side AMG setup, which is host-only today; stronger ILU(0) / block-ILU on GPU; missing smoothers);
+tests on public matrices, not a DARTS deck;
+the rocALUTION C++ style, license, and CI.
+
+What does not belong in rocALUTION:
+CPR (AMG on pressure, ILU on saturation/wells) --- that stays in DARTS as gate~3, calling rocALUTION AMG and ILU;
+DARTS \texttt{block\_row\_perm}, mineral/thermal well rows, operator-linearization kernels;
+a JSON/C clone of \texttt{AMGX\_solver\_setup}.
+
+If stage~1 (GMRES/BiCGStab + Jacobi/ILU0) already runs a small dead-oil case, missing AMG-on-HIP setup or block-ILU is the kind of gap we implement in rocALUTION and open as a pull request.
+If the gap is ``we need AMGX-CPR,'' we write CPR in DARTS and only pull-request the AMG/ILU pieces rocALUTION is missing.
+
+\subsection*{What not to promise in stage~1}
+
+SPE10 / hard compositional / mechanics at AMGX-CPR iteration counts;
+binary-compatible \texttt{AMGX\_solver\_setup}; cuDSS / cuSOLVER.
+
+\section{Madagascar CUDA modules: stage~1 and later gates}
+
+Stage~1 hipifies \textbf{one Madagascar CUDA programme}, not the whole \texttt{user/} tree.
+The rest stay CUDA until later gates.
+Madagascar is SCons/RSF: each \texttt{M*.cu} builds to one \texttt{sf*} command with its own test recipe.
+
+The CUDA units are already separate:
+
+\begin{itemize}
+\item \texttt{user/pyang/Mgpufd3d.cu} --- 3-D acoustic finite difference (Micikevicius stencil).
+\item \texttt{user/pyang/Mgpurtm.cu} + \texttt{cuda\_rtm\_kernels.cu} --- 2-D prestack RTM, CPML, effective-boundary save.
+\item \texttt{user/pyang/Mgpufwi.cu} --- time-domain FWI (Enquist ABC, gradient/CG).
+\item \texttt{user/cuda/Mgpuktmig.cu} --- 2-D/3-D Kirchhoff PSTM; \texttt{cudaArray} and texture interpolation.
+\item \texttt{user/rweiss/Mewefd2d\_gpu.cu} --- 2-D elastic FD (Weiss/Shragge).
+\item \texttt{user/rweiss/Mewefd3d\_gpu\_p2p.cu} --- 3-D elastic FD, multi-GPU halo exchange (\texttt{cudaMemcpyDefault}).
+\end{itemize}
+
+\subsection*{Stage~1 (honest first AMD result)}
+
+HIP of \texttt{Mgpufd3d} only: \texttt{cudaMalloc}/\texttt{cudaMemcpy}/kernels $\to$ HIP, one GPU, no textures, no P2P.
+
+Gate: CPU Madagascar still builds.
+The HIP binary runs a small 3-D shot (Ricker, one source).
+Seismograms match the CUDA binary within a stated residual (max abs or RMS on traces), not a visual plot only.
+Runtime on the Radeon is recorded next to the NVIDIA run of the same recipe.
+
+That is already a GPU modelling result AMD can see.
+The remaining programmes are the same stencil class, so ``weeks'' is credible.
+
+\subsection*{Later gates (if AMD accepts stage~1)}
+
+\begin{enumerate}
+\item Gate~2: \texttt{Mgpurtm} --- 2-D RTM (forward + adjoint, CPML, boundary reconstruction, correlation image).
+Compare the image (and a mute/Laplacian if the CUDA path applies one) to the NVIDIA binary on a tiny Marmousi-style slice.
+\item Gate~3: \texttt{Mgpufwi} --- time-domain FWI loop on the same 2-D stencil; objective decreases; inverted model is not required to match NVIDIA iterate-for-iterate.
+\item Gate~4: Kirchhoff \texttt{Mgpuktmig} (replace \texttt{cudaArray}/textures with HIP texture objects or explicit interpolation) and elastic \texttt{Mewefd2d\_gpu}, then \texttt{Mewefd3d\_gpu\_p2p} (peer copy is a named sub-gate, not silent).
+\end{enumerate}
+
+\subsection*{What not to promise in stage~1}
+
+Multi-GPU P2P elastic 3-D; Kirchhoff texture interpolation; pinned/mapped host memory for RTM boundaries; FWI that matches NVIDIA iteration counts; a hipify of every Madagascar \texttt{user/*/} directory.
+
+\section{2D3D-TI-FD-RTM-cuda: stage~1 and later gates}
+
+Stage~1 hipifies \textbf{one Makefile target}, not the six CUDA programmes.
+The rest stay \texttt{nvcc} until later gates.
+The tree is \url{https://github.com/Rtoax/2D3D-TI-FD-RTM-cuda}:
+quasi-acoustic VTI/TTI finite difference, RTM, Poynting ADCIGs, GPL.
+
+The CUDA units (from the Makefile) are already separate:
+
+\begin{itemize}
+\item \texttt{vti2d\_FD\_RTM} $\leftarrow$ \texttt{Toa\_gpu2DvtiFdRtmAdcigsLaplace.cu} ---
+2-D quasi-acoustic VTI; \texttt{kind=1} forward, \texttt{kind=2} RTM (Laplace image, optional ADCIGs).
+\item \texttt{vti3Dfd} $\leftarrow$ \texttt{Toa\_gpu\_3dvti\_fd\_1orderfunciton.cu} --- 3-D VTI forward.
+\item \texttt{vti3Drtm} $\leftarrow$ \texttt{Toa\_gpu\_3dvti\_rtm\_adcigs\_1orderfunction.cu} --- 3-D VTI RTM + ADCIGs.
+\item \texttt{tti2d\_acousticFD} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_fd\_1orderfunction.cu} --- 2-D TTI acoustic forward.
+\item \texttt{tti2d\_acousticRTM} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_rtm\_adcigs\_1orderfunciton.cu} --- 2-D TTI RTM + ADCIGs.
+\item \texttt{tti2d\_elasticFD} $\leftarrow$ \texttt{Toa\_gpu\_2dtti\_fd\_elastic.cu} --- 2-D TTI elastic forward.
+\end{itemize}
+
+\subsection*{Stage~1 (honest first AMD result)}
+
+HIP of \texttt{vti2d\_FD\_RTM} built with \texttt{hipcc} instead of the Makefile's \texttt{nvcc}.
+Run \texttt{kind=1} only: 2-D VTI forward, one GPU, one shot, $\varepsilon$ and $\delta$ in the VTI stress--velocity update.
+
+Gate: the HIP binary writes a shot gather that matches the CUDA binary within a stated residual (max abs or RMS on traces).
+Runtime on the Radeon is recorded next to NVIDIA on the same velocity/epsilon/delta files.
+Do not score the RTM image in stage~1 even though it lives in the same \texttt{.cu}.
+
+That is already anisotropic GPU modelling AMD can see.
+The same file's \texttt{kind=2} path is the next gate, so ``weeks'' is credible.
+
+\subsection*{Later gates (if AMD accepts stage~1)}
+
+\begin{enumerate}
+\item Gate~2: same binary, \texttt{kind=2} --- 2-D VTI RTM (source and receiver wavefields, correlation, Laplace filter).
+Compare the migration volume to the NVIDIA binary on a tiny VTI slice, not ADCIGs yet.
+\item Gate~3: \texttt{vti3Dfd} then \texttt{vti3Drtm} --- 3-D VTI forward, then 3-D RTM.
+Memory and launch geometry change; treat 3-D RTM as its own sub-gate if the forward already passes.
+\item Gate~4: TTI (\texttt{tti2d\_acousticFD}, then RTM), Poynting ADCIGs (\texttt{nangle}/\texttt{dangle} gathers vs NVIDIA), then elastic TTI FD.
+ADCIGs and elasticity are named sub-gates, not silent extras.
+\end{enumerate}
+
+\subsection*{What not to promise in stage~1}
+
+3-D grids; TTI (tilt angle); elastic TTI; Poynting ADCIGs; RTM images; a hipify of all six targets in one drop;
+matching NVIDIA ADCIG energy after illumination.
+
+\end{document}

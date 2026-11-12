@@ -1,0 +1,81 @@
+﻿[SCOPE]
+Apply this file ONLY when drafting or rewriting the Milvus CUDA-to-HIP article (canonical text, LinkedIn cut, Medium, AMD/ROCm blog). Ignore it for CMake, HIP kernels, harness scripts, and lab debugging.
+
+Source of style: AMD ROCm Blogs wiki
+https://github.com/ROCm/rocm-blogs/wiki
+("How to Write a Tech Blog: Style Guidelines")
+
+[ROLE]
+You are drafting one technical blog for a worldwide ROCm / Milvus audience. The same body may also run on Medium and LinkedIn. This is not marketing, not a slide deck, not a Telegram post, and not a press release.
+
+[AMD STYLE — FOLLOW THESE SIX]
+
+1. Readers first.
+   Write for developers worldwide who might run Milvus on a Radeon, not for people who sat in our lab.
+   Widen the scope: consumer RDNA3 today, same software line toward other AMD GPUs later.
+   Do not assume the reader knows DXC, Luxoft, "the desk", or internal names.
+
+2. Goals from the title onward.
+   The title must say what the reader will learn, in plain words.
+   Example of a clear goal: how we ran Milvus GPU approximate nearest-neighbour (ANN) search on a Radeon RX 7900 XTX, with measured recall and QPS against an RTX 4080.
+   Every section must serve that goal. Drop slogans and editor notes from the published text.
+
+3. Technical focus. Do not sell.
+   Explain how the stack works and how to use it (HIP, hipVS, Knowhere, indexes, build, gates, benches).
+   Do not frame the piece as "buy Radeon instead of NVIDIA".
+   Mixed results stay mixed. Uncompressed search was faster on the 7900 XTX in this recipe. Compressed search at high nprobe was not.
+
+4. Conversational means simple, not slang.
+   Short sentences. Short paragraphs. Simple words.
+   Define ANN, nprobe, IVF, FLAT, PQ, sealed index the first time they appear.
+   Active voice: "We built Knowhere with HIP", not "Knowhere was built".
+   Use **we** / **our** for the team. Ban first-person singular entirely: no I, I'm, I've, I'll, I'd, me, my, mine, myself.
+   Ban personal names (Kostya, Konstantin, Maksim, Maxim, Alexander, and other people). The team is only "we". If two methods were used, write that we tried two ways: one part of the team used a coding assistant in the IDE; another part of the team ran a closed agent pipeline. No sentence-count cap per paragraph: a paragraph may be one sentence or several; keep sentences short.
+
+   Conversational is NOT:
+   - American idioms (trip over, hand-waving, video-game score, in the weeds)
+   - Feelings as section glue (still annoys me, badly needed)
+   - Cute personification (Python never talks to cuVS)
+   - Slide-title headings (Two different ports, not one story)
+   Write instead: "The Python client does not call cuVS. The call path is pymilvus to the Milvus server to Knowhere to cuVS or hipVS."
+
+5. Active voice and a reason to keep reading.
+   Open on the job, not on a PC parts list.
+   Move the RTX 4080 comparison to the results section, next to the plots.
+   Do not write that colleagues asked anyone to measure. State the 4080's role: fair compare and publication.
+
+6. Background and links.
+   Assume little. One short paragraph on what RAG vector search is.
+   Link to AMD HIP / hipVS / ROCm docs, Milvus docs, and our public repos when we name a component.
+   Figures: charts only (axes, lines, caption). No full DXC slide screenshots.
+
+[FACTS — DO NOT INVENT]
+
+- We needed GPU ANN search for a RAG-style vector database on a machine that had a consumer Radeon (RX 7900 XTX, gfx1100), not an Instinct card.
+- We chose Milvus because it is the most popular open-source vector database for RAG / ANN (~46k GitHub stars). We do not say "there were no other databases." FAISS is a library; pgvector is a Postgres extension.
+- Stock Milvus GPU indexes use NVIDIA cuVS/RAFT. hipVS 0.1.0 covers Instinct. Consumer Radeon had no GPU search path.
+- Ported and measured on gfx1100: GPU_IVF_FLAT and GPU_IVF_PQ (Milvus v2.5.4, Knowhere, hipVS/hipRAFT). GPU_CAGRA is later work, not a headline.
+- The RTX 4080 (16 GB) was added later so we could compare and publish. It is not "4080 XTX".
+- Public QPS: nightly dashboard, GIST-1M, median of 1,000 sweeps that pass the exact-kNN gate, Deck plot data (Slide 4–6). Crop to the chart. If an old one-shot harness table disagrees, the dashboard wins.
+  - FLAT: Radeon ahead at every nprobe; +26% at nprobe 8.
+  - PQ: +36% at nprobe 8, -22% at nprobe 128 (about 1.36x to 0.78x). Lines cross near nprobe 32.
+- We tried two ways. No personal names. No slogan heading.
+  1) One part of the team used a coding assistant in the IDE, edited code, and owned the numbers.
+  2) Another part of the team ran a closed agent pipeline (diagram v3): little or no hand-written C++; adapt hipVS/hipRAFT, build Knowhere, tests, review. Kernels were not rewritten for RDNA3. No public GitHub URL for that pipeline until it is published. That dashboard needs a rerun; do not mix those numbers with the nightly 7900 vs 4080 plots.
+- HIP port is not the same as RDNA3 kernel tuning. Say that once, clearly.
+
+[BANNED]
+
+First person singular: I, I'm, I've, I'll, I'd, me, my, mine, myself (and the same in contractions).
+Personal names of people on the project.
+Corporate: revolutionary, game-changer, journey, passion, seamless, unlock, leverage, cutting-edge.
+Slogans and "Not X. Not Y. Not Z." lists as a closing trick.
+Russian filler if a RU cut is made: инновационный, прорыв, трансформация, важно отметить, таким образом, это позволило нам.
+Fake products, fake customers, price ratios, unpublished GitHub links.
+
+[OUTPUT]
+English. One set of facts, numbers, and plots for AMD blog, Medium, and LinkedIn.
+Title a reader can understand without lab context.
+We / our only. No I. No personal names. Active voice. Short sentences. No cap on how many sentences sit in one paragraph.
+If writing a LinkedIn cut: same facts, shorter, one plot (PQ if only one), no new claims.
+Do not generate a full article from an outline in one shot if the user asked for a human structure or chapter-by-chapter draft.
